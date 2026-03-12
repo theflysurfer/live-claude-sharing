@@ -234,16 +234,56 @@
       color: var(--text-secondary);
     }
 
-    /* ─── Artifacts (captured from claude.ai) ─── */
-    .bubble .artifact-container,
-    .bubble [class*="grid-rows"],
-    .bubble [class*="rounded-xl"] {
+    /* ─── Artifacts ─── */
+    .bubble .artifact-block {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 14px 0;
+      overflow: hidden;
+      background: var(--bg-primary);
+    }
+    .bubble .artifact-header {
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      background: linear-gradient(to right, var(--bg-user), var(--bg-primary));
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bubble .artifact-type {
+      padding: 4px 16px 8px;
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+    .bubble .artifact-content {
+      padding: 14px 16px;
+      font-size: 14px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .bubble .artifact-content pre {
+      margin: 0;
+    }
+
+    /* Claude.ai Tailwind class artifacts (rounded cards, borders) */
+    .bubble [class*="rounded-xl"][class*="border"] {
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px 16px;
       margin: 12px 0;
       background: var(--bg-primary);
     }
+
+    /* Standard markdown container from claude.ai */
+    .bubble .standard-markdown {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Copy button styling */
     .bubble button {
       background: var(--accent);
       color: white;
@@ -255,6 +295,25 @@
       font-family: inherit;
     }
     .bubble button:hover { opacity: 0.85; }
+
+    /* Code block header (language label) */
+    .bubble .code-block-header,
+    .bubble [class*="flex"][class*="justify-between"][class*="bg-"] {
+      background: #2d3139;
+      color: #9da5b4;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      border-radius: 8px 8px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bubble .code-block-header + pre,
+    .bubble [class*="flex"][class*="justify-between"][class*="bg-"] + pre {
+      border-radius: 0 0 8px 8px;
+      margin-top: 0;
+    }
 
     /* ─── Typing indicator ─── */
     .typing-indicator {

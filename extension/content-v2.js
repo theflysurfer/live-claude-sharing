@@ -17,7 +17,7 @@
 
   const WS_URL = "ws://localhost:3333/ws/source";
   const RECONNECT_DELAY = 3000;
-  const EXTENSION_VERSION = "2.2.0";
+  const EXTENSION_VERSION = "2.3.0";
 
   // Centralized selectors — update here when claude.ai DOM changes
   const SELECTORS = {
@@ -25,6 +25,10 @@
     claudeResponse: "[class*='font-claude-response']",
     scroller: "[class*='scrollbar-gutter'], [class*='overflow-y-auto'][class*='overflow-x-hidden'][class*='flex-1']",
     contents: ".contents",
+    // Artifact selectors (March 2026)
+    artifactCard: "[data-testid='artifact-card'], [class*='artifact'], [class*='rounded-xl'][class*='border'][class*='bg-']",
+    artifactIframe: "iframe[sandbox]",
+    artifactCode: "pre code[class*='language-'], pre code[class*='hljs']",
   };
 
   let ws = null;
@@ -124,6 +128,62 @@
     return null;
   }
 
+  /**
+   * Extract artifact content that might be outside font-claude-response
+   * (iframes, shadow DOMs, expandable code blocks).
+   * Returns enriched HTML with artifact blocks inlined.
+   */
+  function enrichArtifacts(messageEl, html) {
+    // 1. Try to capture iframe artifact content
+    const iframes = messageEl.querySelectorAll(SELECTORS.artifactIframe);
+    for (const iframe of iframes) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (iframeDoc && iframeDoc.body) {
+          const artifactContent = iframeDoc.body.innerHTML;
+          if (artifactContent && artifactContent.length > 10) {
+            const title = iframe.getAttribute("title") || "Artifact";
+            log("INFO", `Captured iframe artifact "${title}" (${artifactContent.length} chars)`);
+            html += `\n<div class="artifact-block" data-artifact-type="iframe">
+              <div class="artifact-header">${escapeHtml(title)}</div>
+              <div class="artifact-content">${artifactContent}</div>
+            </div>`;
+          }
+        }
+      } catch (e) {
+        // Cross-origin iframe — can't access content
+        log("DEBUG", `Cannot access iframe content: ${e.message}`);
+        const title = iframe.getAttribute("title") || "Artifact";
+        html += `\n<div class="artifact-block" data-artifact-type="iframe-blocked">
+          <div class="artifact-header">📎 ${escapeHtml(title)}</div>
+          <div class="artifact-content"><em>Interactive artifact (view on claude.ai)</em></div>
+        </div>`;
+      }
+    }
+
+    // 2. Find artifact cards that might not be inside font-claude-response
+    const cards = messageEl.querySelectorAll("[data-testid*='artifact'], [class*='artifact-trigger']");
+    for (const card of cards) {
+      // Check if card content is already in our HTML
+      const cardText = card.textContent?.trim() || "";
+      if (cardText && !html.includes(cardText.slice(0, 50))) {
+        const title = card.querySelector("[class*='font-medium'], [class*='font-semibold']")?.textContent || "Artifact";
+        const type = card.querySelector("[class*='text-xs'], [class*='text-sm']")?.textContent || "";
+        log("INFO", `Captured artifact card "${title}" (${type})`);
+        html += `\n<div class="artifact-block" data-artifact-type="card">
+          <div class="artifact-header">📎 ${escapeHtml(title)}</div>
+          ${type ? `<div class="artifact-type">${escapeHtml(type)}</div>` : ""}
+        </div>`;
+      }
+    }
+
+    return html;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
   function parseMessageEl(el) {
     if (!el || el.nodeType !== 1) return null;
 
@@ -140,7 +200,9 @@
     // ASSISTANT message
     const claudeResponse = el.querySelector(SELECTORS.claudeResponse);
     if (claudeResponse) {
-      return { role: "assistant", text: claudeResponse.innerHTML };
+      let html = claudeResponse.innerHTML;
+      html = enrichArtifacts(el, html);
+      return { role: "assistant", text: html };
     }
 
     // ASSISTANT fallback
@@ -149,7 +211,9 @@
       const inner = contents.querySelector("[class*='font-claude']") ||
         contents.firstElementChild;
       if (inner) {
-        return { role: "assistant", text: inner.innerHTML };
+        let html = inner.innerHTML;
+        html = enrichArtifacts(el, html);
+        return { role: "assistant", text: html };
       }
     }
 
