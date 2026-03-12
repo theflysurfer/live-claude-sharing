@@ -213,7 +213,7 @@ class LiveShareServer {
           break;
 
         case "__debug":
-          this._log(`[DEBUG] ${msg.key}: ${JSON.stringify(msg.val)}`);
+          console.log(`[DEBUG] ${msg.key}: ${JSON.stringify(msg.val)}`);
           break;
 
         default:

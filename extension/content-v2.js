@@ -41,7 +41,14 @@
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
       console.log("[LiveShare] Connected to server");
-      fullSync();
+      // Don't fullSync here — startObserving will do it once the DOM container is found.
+      // Sending an empty sync here overwrites any later sync.
+      const container = getMessageContainer();
+      if (container) {
+        fullSync();
+      } else {
+        console.log("[LiveShare] Container not ready, deferring sync to startObserving");
+      }
     };
     ws.onclose = () => {
       console.log("[LiveShare] Disconnected, reconnecting...");
@@ -214,11 +221,17 @@
 
   function startObserving() {
     const container = getMessageContainer();
+    const userCount = document.querySelectorAll(SELECTORS.userMessage).length;
+    const claudeCount = document.querySelectorAll(SELECTORS.claudeResponse).length;
     debugLog("startObserving", {
       found: !!container,
-      firstUserMsg: !!document.querySelector(SELECTORS.userMessage),
+      userMsgs: userCount,
+      claudeMsgs: claudeCount,
+      bodyChildren: document.body?.children?.length || 0,
+      url: location.href,
       time: new Date().toISOString(),
     });
+    console.log(`[LiveShare] startObserving: container=${!!container}, user=${userCount}, claude=${claudeCount}`);
     if (!container) {
       // After 30s of retries, warn about possibly broken selectors
       if (!selectorCheckDone) {
