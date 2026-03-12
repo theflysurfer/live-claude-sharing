@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mock claude.ai DOM — Extension Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f0; }
+    h1 { font-size: 18px; margin-bottom: 10px; }
+    #controls { margin-bottom: 20px; display: flex; gap: 8px; }
+    button { padding: 6px 14px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; }
+    button:hover { background: #eee; }
+    #log { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; margin-top: 20px; }
+    /* Mimic claude.ai scroll container */
+    .overflow-y-auto.overflow-x-hidden.flex-1 { border: 2px dashed #ccc; padding: 10px; min-height: 200px; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Mock claude.ai DOM</h1>
+  <p>This page mimics the claude.ai DOM structure so the extension's content script can detect and relay messages.</p>
+  <div id="controls">
+    <button onclick="addUserMessage()">➕ Add User Message</button>
+    <button onclick="addAssistantMessage()">➕ Add Assistant Message</button>
+    <button onclick="simulateStreaming()">⚡ Simulate Streaming</button>
+    <button onclick="clearConversation()">🗑️ Clear All</button>
+  </div>
+
+  <!-- 
+    Reproducing claude.ai's actual DOM hierarchy:
+    div.overflow-y-auto (scroller)
+      └ div.relative.w-full.min-h-full
+        └ div.mx-auto.flex.size-full.max-w-3xl
+          └ div.flex-1.flex.flex-col.px-4  ← message container
+  -->
+  <div class="overflow-y-auto overflow-x-hidden flex-1" style="scrollbar-gutter: stable;">
+    <div class="relative w-full min-h-full">
+      <div class="mx-auto flex size-full max-w-3xl">
+        <div class="flex-1 flex flex-col px-4" id="messageContainer">
+          <!-- Messages will be added here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="log">Waiting for extension content script to connect...\n</div>
+
+  <script>
+    const container = document.getElementById("messageContainer");
+    const logEl = document.getElementById("log");
+    let msgIndex = 0;
+    let streamInterval = null;
+
+    function log(msg) {
+      logEl.textContent += new Date().toISOString().split("T")[1].slice(0,8) + " " + msg + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Monitor WS traffic by intercepting WebSocket
+    const OrigWS = window.WebSocket;
+    window.WebSocket = function(url, protocols) {
+      log(`[WS] new WebSocket(${url})`);
+      const ws = new OrigWS(url, protocols);
+      ws.addEventListener("open", () => log("[WS] connected"));
+      ws.addEventListener("close", () => log("[WS] disconnected"));
+      ws.addEventListener("error", () => log("[WS] error"));
+      const origSend = ws.send.bind(ws);
+      ws.send = (data) => {
+        try {
+          const msg = JSON.parse(data);
+          log(`[WS→] ${msg.type} ${msg.id || ""} (${data.length} chars)`);
+        } catch {
+          log(`[WS→] raw (${data.length} chars)`);
+        }
+        return origSend(data);
+      };
+      return ws;
+    };
+    // Preserve prototype for readyState etc
+    window.WebSocket.OPEN = OrigWS.OPEN;
+    window.WebSocket.CLOSED = OrigWS.CLOSED;
+    window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+    window.WebSocket.CLOSING = OrigWS.CLOSING;
+    window.WebSocket.prototype = OrigWS.prototype;
+
+    function createUserMessageDOM(text) {
+      // Matches: div > div.mb-1.mt-6.group > div[data-testid='user-message'] > div.flex.flex-col.items-end
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = `
+        <div class="mb-1 mt-6 group">
+          <div data-testid="user-message">
+            <div class="flex flex-col items-end">${escapeHtml(text)}</div>
+          </div>
+        </div>
+      `;
+      return wrapper;
+    }
+
+    function createAssistantMessageDOM(text) {
+      // Matches: div > div.group > div.contents > div.font-claude-response
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = `
+        <div class="group">
+          <div class="contents">
+            <div class="font-claude-response"><p>${escapeHtml(text)}</p></div>
+          </div>
+        </div>
+      `;
+      return wrapper;
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function addUserMessage(text) {
+      text = text || `User message #${msgIndex}`;
+      const el = createUserMessageDOM(text);
+      container.appendChild(el);
+      // Add separator
+      const sep = document.createElement("div");
+      sep.className = "h-px";
+      container.appendChild(sep);
+      log(`[DOM] Added user message: "${text}"`);
+      msgIndex++;
+    }
+
+    function addAssistantMessage(text) {
+      text = text || `Assistant response #${msgIndex}`;
+      const el = createAssistantMessageDOM(text);
+      container.appendChild(el);
+      const sep = document.createElement("div");
+      sep.className = "h-px";
+      container.appendChild(sep);
+      log(`[DOM] Added assistant message: "${text}"`);
+      msgIndex++;
+    }
+
+    function simulateStreaming() {
+      if (streamInterval) {
+        clearInterval(streamInterval);
+        streamInterval = null;
+        log("[STREAM] Stopped");
+        return;
+      }
+
+      // Add an assistant message and progressively update its content
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = `
+        <div class="group">
+          <div class="contents">
+            <div class="font-claude-response"><p></p></div>
+          </div>
+        </div>
+      `;
+      container.appendChild(wrapper);
+      const responseEl = wrapper.querySelector(".font-claude-response p");
+      
+      const fullText = "This is a streaming response that appears word by word, simulating how Claude actually types its responses in real-time on the claude.ai interface.";
+      const words = fullText.split(" ");
+      let wordIdx = 0;
+
+      log("[STREAM] Starting simulated streaming...");
+      streamInterval = setInterval(() => {
+        if (wordIdx >= words.length) {
+          clearInterval(streamInterval);
+          streamInterval = null;
+          log("[STREAM] Complete");
+          return;
+        }
+        responseEl.textContent += (wordIdx > 0 ? " " : "") + words[wordIdx];
+        wordIdx++;
+      }, 200);
+
+      msgIndex++;
+    }
+
+    function clearConversation() {
+      container.innerHTML = "";
+      msgIndex = 0;
+      log("[DOM] Cleared all messages");
+    }
+
+    // Pre-populate with one exchange so the extension has something to detect
+    addUserMessage("Hello, how are you?");
+    addAssistantMessage("I'm doing well, thank you for asking! How can I help you today?");
+  </script>
+</body>
+</html>

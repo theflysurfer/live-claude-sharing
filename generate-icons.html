@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><body>
+<canvas id="c16" width="16" height="16"></canvas>
+<canvas id="c48" width="48" height="48"></canvas>
+<canvas id="c128" width="128" height="128"></canvas>
+<script>
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width;
+  // Orange circle
+  ctx.fillStyle = '#d97706';
+  ctx.beginPath();
+  ctx.arc(s/2, s/2, s/2-1, 0, Math.PI*2);
+  ctx.fill();
+  // Red dot (live indicator)
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(s*0.7, s*0.3, s*0.15, 0, Math.PI*2);
+  ctx.fill();
+  // White play triangle
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.moveTo(s*0.35, s*0.3);
+  ctx.lineTo(s*0.35, s*0.75);
+  ctx.lineTo(s*0.7, s*0.52);
+  ctx.closePath();
+  ctx.fill();
+}
+['c16','c48','c128'].forEach(id => {
+  const c = document.getElementById(id);
+  drawIcon(c);
+  const a = document.createElement('a');
+  a.download = `icon${c.width}.png`;
+  a.href = c.toDataURL('image/png');
+  a.textContent = `Download ${c.width}px`;
+  document.body.appendChild(a);
+  document.body.appendChild(document.createElement('br'));
+});
+</script>
+</body></html>

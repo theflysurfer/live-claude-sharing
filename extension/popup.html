@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 260px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      color: #333;
+    }
+    h2 { margin: 0 0 12px 0; font-size: 15px; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #f5f5f5;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+    .dot.ok { background: #22c55e; }
+    .info {
+      margin-top: 12px;
+      font-size: 11px;
+      color: #888;
+    }
+    a { color: #d97706; }
+  </style>
+</head>
+<body>
+  <h2>🔴 Live Claude Sharing</h2>
+  <div class="status">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">Checking...</span>
+  </div>
+  <div class="info">
+    Viewer: <a href="http://localhost:3333" target="_blank">localhost:3333</a>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

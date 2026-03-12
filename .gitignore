@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.chrome-profile/
+.chrome-profile-test/
+.chrome-profile-fresh/
+*.bat
+conversation-backup.json
+test-conversation-backup.json
+PLAN.md
+C:/tmp/

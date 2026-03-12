@@ -1,0 +1,12 @@
+{
+  "name": "live-claude-sharing-server",
+  "version": "1.0.0",
+  "description": "WebSocket relay server for live Claude conversation sharing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
