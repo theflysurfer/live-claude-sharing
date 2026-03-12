@@ -356,9 +356,21 @@ if (window.liveShare) {
 let ws;
 let reconnectDelay = 1000;
 
-function getWsUrl() {
-  const params = new URLSearchParams(location.search);
-  const token = params.get("token");
+let _cachedToken = null;
+
+async function getWsUrl() {
+  // Try to get token from Electron IPC first, then from URL query string
+  let token = null;
+  if (window.liveShare && window.liveShare.getToken) {
+    try {
+      token = await window.liveShare.getToken();
+    } catch {}
+  }
+  if (!token) {
+    const params = new URLSearchParams(location.search);
+    token = params.get("token");
+  }
+  _cachedToken = token;
   const tokenQuery = token ? `?token=${token}` : "";
 
   // When loaded as file:// in Electron, connect to localhost directly
@@ -370,8 +382,9 @@ function getWsUrl() {
   return `${proto}//${location.host}/ws/viewer${tokenQuery}`;
 }
 
-function connect() {
-  ws = new WebSocket(getWsUrl());
+async function connect() {
+  const wsUrl = await getWsUrl();
+  ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     statusDot.classList.add("connected");
