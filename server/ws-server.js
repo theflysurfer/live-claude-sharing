@@ -120,7 +120,10 @@ class LiveShareServer {
   start() {
     this.logger.info(`Server starting on port ${this.port}`);
     this.logger.info(`Viewer dir: ${this.viewerDir}`);
-    this.logger.info(`Token: ${this.token ? this.token.slice(0, 8) + "..." : "disabled"}`);
+    this.logger.info(`Token: ${this.token || "disabled"}`);
+    if (this.token) {
+      this.logger.info(`Share URL: http://localhost:${this.port}?token=${this.token}`);
+    }
     this.logger.info(`Persistence: ${this.persist ? this.persistPath : "disabled"}`);
 
     // Load persisted conversation if available
