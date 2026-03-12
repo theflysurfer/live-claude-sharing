@@ -17,7 +17,7 @@
 
   const WS_URL = "ws://localhost:3333/ws/source";
   const RECONNECT_DELAY = 3000;
-  const EXTENSION_VERSION = "2.1.0";
+  const EXTENSION_VERSION = "2.2.0";
 
   // Centralized selectors — update here when claude.ai DOM changes
   const SELECTORS = {
@@ -28,59 +28,97 @@
   };
 
   let ws = null;
+  let wsState = "disconnected"; // disconnected, connecting, connected
   let messageCache = new Map(); // id -> { role, text }
   let observer = null;
   let containerObserver = null;
   let debounceTimer = null;
   let isStreaming = false;
   let selectorCheckDone = false;
+  let syncCount = 0;
+  let connectCount = 0;
+
+  // ─── Logging ───
+
+  function log(level, msg) {
+    const ts = new Date().toISOString().split("T")[1].slice(0, 12);
+    const line = `[LiveShare ${ts}] [${level}] ${msg}`;
+    if (level === "ERROR" || level === "WARN") {
+      console.warn(line);
+    } else {
+      console.log(line);
+    }
+    // Also send to server as debug (if connected)
+    if (level !== "DEBUG") {
+      send({ type: "__debug", key: `ext_${level.toLowerCase()}`, val: msg });
+    }
+  }
 
   // ─── WebSocket ───
 
   function connect() {
+    connectCount++;
+    wsState = "connecting";
+    log("INFO", `WS connecting to ${WS_URL} (attempt #${connectCount})`);
+
     ws = new WebSocket(WS_URL);
+
     ws.onopen = () => {
-      console.log("[LiveShare] Connected to server");
-      // Don't fullSync here — startObserving will do it once the DOM container is found.
-      // Sending an empty sync here overwrites any later sync.
+      wsState = "connected";
+      log("INFO", `WS connected (attempt #${connectCount})`);
+
+      // Only fullSync if container already found
       const container = getMessageContainer();
       if (container) {
+        log("INFO", "Container already available on WS connect → fullSync");
         fullSync();
       } else {
-        console.log("[LiveShare] Container not ready, deferring sync to startObserving");
+        log("INFO", "Container not ready on WS connect → deferring to startObserving");
       }
     };
-    ws.onclose = () => {
-      console.log("[LiveShare] Disconnected, reconnecting...");
+
+    ws.onclose = (event) => {
+      wsState = "disconnected";
+      log("WARN", `WS disconnected — code=${event.code} reason="${event.reason || ""}" wasClean=${event.wasClean}`);
       setTimeout(connect, RECONNECT_DELAY);
     };
-    ws.onerror = () => {};
+
+    ws.onerror = (event) => {
+      log("ERROR", `WS error — readyState=${ws.readyState}`);
+    };
   }
 
   function send(data) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
+      try {
+        const json = JSON.stringify(data);
+        ws.send(json);
+        return true;
+      } catch (err) {
+        log("ERROR", `WS send failed: ${err.message}`);
+        return false;
+      }
     }
+    return false;
   }
 
   // ─── DOM Parsing ───
 
   function getMessageContainer() {
-    // Find the first user message, then walk up to find the container
-    // that holds ALL messages (user + assistant) as direct or near-direct children.
     const firstUserMsg = document.querySelector(SELECTORS.userMessage);
     if (!firstUserMsg) return null;
 
-    // Walk up from the user message, looking for the container that holds
-    // multiple message-like children (both user and assistant)
     let el = firstUserMsg.parentElement;
+    let depth = 0;
     while (el) {
       const userMsgs = el.querySelectorAll(`:scope > * ${SELECTORS.userMessage}`);
       const claudeMsgs = el.querySelectorAll(`:scope > * ${SELECTORS.claudeResponse}`);
       if (userMsgs.length >= 1 && claudeMsgs.length >= 1 && el.children.length >= 3) {
+        log("DEBUG", `Container found at depth ${depth}: tag=${el.tagName} class="${(el.className || "").slice(0, 60)}" children=${el.children.length} user=${userMsgs.length} claude=${claudeMsgs.length}`);
         return el;
       }
       el = el.parentElement;
+      depth++;
     }
 
     return null;
@@ -89,24 +127,23 @@
   function parseMessageEl(el) {
     if (!el || el.nodeType !== 1) return null;
 
-    // USER message: data-testid="user-message" on the element itself or a child
+    // USER message
     const userMsg =
       (el.getAttribute("data-testid") === "user-message" ? el : null) ||
       el.querySelector(SELECTORS.userMessage);
     if (userMsg) {
-      // Get text from the items-end container, or fall back to full text
       const textContainer =
         userMsg.querySelector("[class*='items-end']") || userMsg;
       return { role: "user", text: textContainer.textContent.trim() };
     }
 
-    // ASSISTANT message: has .font-claude-response
+    // ASSISTANT message
     const claudeResponse = el.querySelector(SELECTORS.claudeResponse);
     if (claudeResponse) {
       return { role: "assistant", text: claudeResponse.innerHTML };
     }
 
-    // ASSISTANT fallback: .contents with inner content
+    // ASSISTANT fallback
     const contents = el.querySelector(SELECTORS.contents);
     if (contents) {
       const inner = contents.querySelector("[class*='font-claude']") ||
@@ -121,9 +158,13 @@
 
   function getAllMessages() {
     const container = getMessageContainer();
-    if (!container) return [];
+    if (!container) {
+      log("DEBUG", "getAllMessages: no container");
+      return [];
+    }
     const messages = [];
     let idx = 0;
+    let skipped = 0;
     for (const child of container.children) {
       const parsed = parseMessageEl(child);
       if (parsed) {
@@ -133,42 +174,57 @@
           text: parsed.text,
         });
         idx++;
+      } else {
+        skipped++;
       }
     }
+    log("DEBUG", `getAllMessages: ${messages.length} parsed, ${skipped} skipped, ${container.children.length} total children`);
     return messages;
   }
 
   // ─── Sync Logic ───
 
-  function debugLog(key, val) {
-    // Send debug info through the WS connection (server will log it)
-    send({ type: "__debug", key, val });
-  }
-
   function fullSync() {
+    syncCount++;
     const container = getMessageContainer();
-    debugLog("container", {
-      found: !!container,
-      classes: container?.className?.slice(0, 80) || null,
-      children: container?.children?.length || 0,
-      firstUserMsg: !!document.querySelector("[data-testid='user-message']"),
-      time: new Date().toISOString(),
-    });
+    log("INFO", `fullSync #${syncCount}: container=${!!container}, wsState=${wsState}`);
+
+    if (!container) {
+      log("WARN", "fullSync called but no container — sending empty sync");
+    }
+
     const messages = getAllMessages();
     messageCache.clear();
     for (const m of messages) {
       messageCache.set(m.id, { role: m.role, text: m.text });
     }
-    send({ type: "full_sync", messages, version: EXTENSION_VERSION });
-    debugLog("lastSync", { count: messages.length, version: EXTENSION_VERSION, time: new Date().toISOString() });
-    console.log(`[LiveShare] Full sync: ${messages.length} messages`);
+
+    const sent = send({ type: "full_sync", messages, version: EXTENSION_VERSION });
+    log("INFO", `fullSync #${syncCount}: ${messages.length} messages, sent=${sent}`);
+
+    if (messages.length > 0) {
+      log("INFO", `  first: [${messages[0].role}] "${(messages[0].text || "").slice(0, 60)}"`);
+      log("INFO", `  last:  [${messages[messages.length - 1].role}] "${(messages[messages.length - 1].text || "").slice(0, 60)}"`);
+    }
+
+    // Send container debug info
+    send({ type: "__debug", key: "fullSync_detail", val: {
+      syncCount,
+      containerFound: !!container,
+      containerClass: container?.className?.slice(0, 80) || null,
+      containerChildren: container?.children?.length || 0,
+      msgCount: messages.length,
+      userMsgsInDOM: document.querySelectorAll(SELECTORS.userMessage).length,
+      claudeMsgsInDOM: document.querySelectorAll(SELECTORS.claudeResponse).length,
+      url: location.href,
+      time: new Date().toISOString(),
+    }});
   }
 
   function checkForChanges() {
     const current = getAllMessages();
     const prevSize = messageCache.size;
 
-    // Check if any message is new or changed
     let changed = current.length !== prevSize;
     if (!changed) {
       for (const m of current) {
@@ -182,36 +238,36 @@
 
     if (!changed) return;
 
-    // Find what changed
+    log("INFO", `checkForChanges: ${prevSize}→${current.length} messages`);
+
     for (const m of current) {
       const cached = messageCache.get(m.id);
 
       if (!cached) {
-        // New message
+        log("INFO", `  NEW message ${m.id} [${m.role}] ${(m.text || "").length} chars`);
         send({ type: "message_start", id: m.id, role: m.role });
         send({ type: "delta", id: m.id, text: m.text });
         messageCache.set(m.id, { role: m.role, text: m.text });
       } else if (cached.text !== m.text) {
-        // Content changed (streaming)
         isStreaming = true;
-        // If text was only appended, send a delta instead of full replace
         if (m.text.startsWith(cached.text) && m.text.length > cached.text.length) {
           const appended = m.text.slice(cached.text.length);
           send({ type: "delta", id: m.id, text: appended });
         } else {
+          log("DEBUG", `  REPLACE ${m.id}: ${cached.text.length}→${m.text.length} chars`);
           send({ type: "delta_replace", id: m.id, text: m.text });
         }
         cached.text = m.text;
       }
     }
 
-    // Check if streaming just stopped (last assistant message stopped changing)
+    // Check if streaming just stopped
     const last = current[current.length - 1];
     if (last && isStreaming) {
       const cachedLast = messageCache.get(last.id);
       if (cachedLast && cachedLast.text === last.text) {
-        // Text hasn't changed since last check — streaming is done
         isStreaming = false;
+        log("INFO", `  STREAM END ${last.id}`);
         send({ type: "message_end", id: last.id });
       }
     }
@@ -223,43 +279,45 @@
     const container = getMessageContainer();
     const userCount = document.querySelectorAll(SELECTORS.userMessage).length;
     const claudeCount = document.querySelectorAll(SELECTORS.claudeResponse).length;
-    debugLog("startObserving", {
+
+    log("INFO", `startObserving: container=${!!container} user=${userCount} claude=${claudeCount} url=${location.href}`);
+
+    send({ type: "__debug", key: "startObserving", val: {
       found: !!container,
       userMsgs: userCount,
       claudeMsgs: claudeCount,
       bodyChildren: document.body?.children?.length || 0,
+      allElements: document.querySelectorAll("*").length,
       url: location.href,
+      wsState,
       time: new Date().toISOString(),
-    });
-    console.log(`[LiveShare] startObserving: container=${!!container}, user=${userCount}, claude=${claudeCount}`);
+    }});
+
     if (!container) {
-      // After 30s of retries, warn about possibly broken selectors
       if (!selectorCheckDone) {
         setTimeout(() => {
           if (!getMessageContainer() && document.querySelectorAll("*").length > 100) {
             selectorCheckDone = true;
-            debugLog("selector_broken", {
+            log("ERROR", `SELECTORS BROKEN — DOM has ${document.querySelectorAll("*").length} elements but no container found after 30s`);
+            send({ type: "__debug", key: "selector_broken", val: {
               selectors: SELECTORS,
               bodyChildren: document.body.children.length,
               version: EXTENSION_VERSION,
               time: new Date().toISOString(),
-            });
-            console.warn("[LiveShare] Selectors may be broken — DOM loaded but no messages found after 30s");
+            }});
           }
         }, 30000);
       }
-      // Retry until the container appears
       setTimeout(startObserving, 2000);
       return;
     }
 
-    console.log("[LiveShare] Observing message container");
+    log("INFO", "Observing message container — attaching MutationObserver");
 
-    // Re-sync now that we have the container (initial fullSync may have run too early)
+    // Re-sync now that we have the container
     fullSync();
 
     observer = new MutationObserver(() => {
-      // Adaptive debounce: 150ms normally, 300ms for long conversations
       const delay = messageCache.size > 20 ? 300 : 150;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(checkForChanges, delay);
@@ -275,10 +333,11 @@
     if (containerObserver) containerObserver.disconnect();
     const scroller = document.querySelector(SELECTORS.scroller);
     if (scroller) {
+      log("INFO", `Scroller found: tag=${scroller.tagName} class="${(scroller.className || "").slice(0, 60)}"`);
       containerObserver = new MutationObserver(() => {
         const newContainer = getMessageContainer();
         if (newContainer && newContainer !== container) {
-          console.log("[LiveShare] Container changed, re-initializing");
+          log("INFO", "Container changed (navigation?) — re-initializing");
           observer.disconnect();
           setTimeout(() => {
             fullSync();
@@ -287,6 +346,8 @@
         }
       });
       containerObserver.observe(scroller, { childList: true, subtree: false });
+    } else {
+      log("WARN", "Scroller NOT found — SPA navigation detection disabled");
     }
   }
 
@@ -294,8 +355,9 @@
   let lastUrl = location.href;
   setInterval(() => {
     if (location.href !== lastUrl) {
+      const oldUrl = lastUrl;
       lastUrl = location.href;
-      console.log("[LiveShare] URL changed:", lastUrl);
+      log("INFO", `URL changed: ${oldUrl} → ${lastUrl}`);
       if (observer) observer.disconnect();
       setTimeout(() => {
         fullSync();
@@ -306,12 +368,15 @@
 
   // ─── Cleanup ───
   window.addEventListener("beforeunload", () => {
+    log("INFO", "Page unloading — cleanup");
     if (observer) observer.disconnect();
     if (containerObserver) containerObserver.disconnect();
     if (ws) ws.close();
   });
 
   // ─── Init ───
+  log("INFO", `Content script v${EXTENSION_VERSION} loaded on ${location.href}`);
+  log("INFO", `Selectors: ${JSON.stringify(SELECTORS)}`);
   connect();
   setTimeout(startObserving, 2000);
 })();

@@ -384,19 +384,26 @@ async function getWsUrl() {
 
 async function connect() {
   const wsUrl = await getWsUrl();
+  console.log(`[Viewer] Connecting to ${wsUrl.replace(/token=\w+/, "token=***")}`);
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    console.log("[Viewer] WS connected — waiting for messages");
     statusDot.classList.add("connected");
     statusText.textContent = "Connected";
     reconnectDelay = 1000;
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
+    console.log(`[Viewer] WS disconnected — code=${event.code} reason="${event.reason || ""}" wasClean=${event.wasClean}`);
     statusDot.classList.remove("connected");
     statusText.textContent = "Reconnecting...";
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+  };
+
+  ws.onerror = (event) => {
+    console.error("[Viewer] WS error", event);
   };
 
   ws.onmessage = (event) => {
@@ -404,11 +411,15 @@ async function connect() {
     try {
       msg = JSON.parse(event.data);
     } catch {
+      console.error("[Viewer] Bad JSON:", event.data.slice(0, 100));
       return;
     }
 
+    console.log(`[Viewer] ← ${msg.type}${msg.messages ? ` (${msg.messages.length} msgs)` : ""}${msg.id ? ` id=${msg.id}` : ""}`);
+
     switch (msg.type) {
       case "full_sync":
+        console.log(`[Viewer] full_sync: ${(msg.messages || []).length} messages, streamingId=${msg.streamingId || "null"}`);
         setMessages(msg.messages, msg.streamingId);
         break;
 
