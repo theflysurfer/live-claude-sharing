@@ -1,5 +1,6 @@
 node_modules/
 dist/
+logs/
 .chrome-profile/
 .chrome-profile-test/
 .chrome-profile-fresh/
