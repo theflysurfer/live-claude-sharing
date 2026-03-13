@@ -7,14 +7,19 @@ Real-time sharing of Claude.ai conversations via Chrome extension + WebSocket re
 ## Architecture
 
 ```
-Chrome extension (content-v2.js) ──→ WS Server (ws-server.js) ──→ Viewer (viewer/index.html)
-    MutationObserver on claude.ai       /ws/source → relay → /ws/viewer       Markdown + highlight.js
+Chrome extension (claude.ai)  ──→  WS Server (ws-server.js)  ──→  Viewer (viewer/index.html)
+    MutationObserver on DOM         /ws/source → relay            Session selector + owner controls
+                                    /ws/viewer → read-only        💭 thinking + 🔧 tools
+Pi/CC JSONL watcher ───────────→    /ws/owner  → full control
+    Scans ALL recent sessions       Multi-session store
+    fs.watch + tail on JSONL        Visibility per session
 ```
 
-**3 components:**
-- `extension/content-v2.js` — Content script injected on claude.ai, observes DOM, sends messages via WebSocket
-- `server/ws-server.js` — HTTP + WS relay server, single dependency (`ws`), manages source/viewer connections
-- `viewer/index.html` — Single HTML file used by both standalone server and Electron app
+**4 components:**
+- `extension/content-v2.js` — Content script on claude.ai, DOM observer → WS source (backward compat, no sessionId)
+- `server/pi-source.js` — Multi-session JSONL watcher, discovers ALL recent Pi + Claude Code sessions
+- `server/ws-server.js` — Multi-session WS relay: per-session conversations, owner/viewer roles, visibility control
+- `viewer/index.html` — Session selector sidebar, thinking/tool collapsibles, owner visibility toggles
 
 **Electron wrapper:** `main.js` + `preload.js` + `tray.js`
 
@@ -33,6 +38,7 @@ Chrome extension (content-v2.js) ──→ WS Server (ws-server.js) ──→ Vi
 | `test-server.js` | Level 1 tests — server relay (29 tests) |
 | `test-extension.py` | Level 2 tests — extension on mock DOM (10 tests) |
 | `test-mock-page.html` | Mock claude.ai DOM for extension testing |
+| `server/pi-source.js` | JSONL watcher — Pi + Claude Code session files → WS source |
 | `test-auto.py` | Level 3 tests — full E2E with real claude.ai |
 
 ## DOM Selectors (Fragile!)
@@ -62,11 +68,49 @@ If claude.ai redesigns, update SELECTORS and run `test-extension.py` with update
 
 ## Protocol
 
-`full_sync` → `message_start` → `delta`/`delta_replace` (streaming) → `message_end`
+All messages include `sessionId`. Chrome extension backward-compat: no `sessionId` → uses default `"claude-ai"`.
 
-- `delta` = append text (optimized, used when text is only appended)
-- `delta_replace` = full innerHTML replace (used when content restructures)
-- `__debug` = extension diagnostics (selector_broken, container info)
+### Source → Server
+- `register_session` — `{ sessionId, label, sourceType, project }` — register a new session
+- `full_sync` — `{ sessionId, messages, version }` — replace conversation
+- `message_start` → `delta`/`delta_replace` → `message_end` — streaming
+
+### Server → Viewer
+- `session_list` — `{ sessions: [...], isOwner }` — available sessions with metadata
+- `full_sync` — `{ sessionId, messages, streamingId }` — current conversation
+- `message_start` → `delta`/`delta_replace` → `message_end` — streaming
+
+### Viewer/Owner → Server
+- `switch_session` — `{ sessionId }` — change watched session
+- `set_visibility` — `{ sessionId, visible }` — owner only, toggle session visibility
+- `remove_session` — `{ sessionId }` — owner only
+
+### Message roles
+`user`, `assistant`, `thinking`, `tool_call`, `tool_result`, `system`
+
+### WS paths
+- `/ws/source` — data sources (extension, pi-source.js)
+- `/ws/viewer` — read-only viewers (see only visible sessions)
+- `/ws/viewer?owner=true` — owner mode (see all sessions + visibility controls)
+
+## Pi / Claude Code JSONL Source
+
+`pi-source.js` discovers and watches ALL recent sessions across all projects.
+
+```bash
+node server/pi-source.js                          # Scan all recent sessions
+node server/pi-source.js --session <path.jsonl>    # Watch a specific file
+node server/pi-source.js --max-age 120             # Max session age in minutes
+node server/server.js --pi                         # Server + watcher together
+```
+
+**Session paths:**
+- Pi: `~/.pi/agent/sessions/--<encoded-path>--/<session>.jsonl`
+- Claude Code: `~/.claude/projects/<encoded-path>/<session>.jsonl`
+
+**Viewer URLs:**
+- `http://localhost:3333` — Viewer (sees visible sessions only)
+- `http://localhost:3333?owner=true` — Owner (sees all sessions, can toggle visibility)
 
 ## Testing
 

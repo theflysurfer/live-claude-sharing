@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live Claude Conversation</title>
+  <title>Live Claude Sharing</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -16,10 +16,10 @@
       --bg-primary: #f9f6f1;
       --bg-chat: #ffffff;
       --bg-user: #f3ebe2;
-      --bg-assistant: transparent;
       --bg-code: #282c34;
       --bg-inline-code: #f0ebe4;
       --bg-header: #d4a574;
+      --bg-sidebar: #f5f0ea;
       --text-primary: #2d2013;
       --text-secondary: #6b5d4d;
       --text-tertiary: #9b8b78;
@@ -30,6 +30,12 @@
       --red: #c75a3a;
       --avatar-claude: #c4814a;
       --avatar-user: #7c6b5a;
+      --bg-thinking: #f5f0fa;
+      --bg-tool: #f0f4f8;
+      --bg-system: #f8f8f0;
+      --accent-thinking: #8b6fc0;
+      --accent-tool: #4a7fb5;
+      --accent-system: #7a8b6e;
     }
 
     body {
@@ -72,12 +78,67 @@
       font-weight: 600;
       letter-spacing: 0.02em;
     }
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      -webkit-app-region: no-drag;
+    }
     .header-right {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       -webkit-app-region: no-drag;
     }
+
+    .toggle-btn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 3px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .toggle-btn:hover { background: rgba(255,255,255,0.35); }
+    .toggle-btn.inactive { opacity: 0.4; }
+
+    .share-link {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      padding: 2px 4px 2px 10px;
+      max-width: 280px;
+    }
+    .share-url {
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0.85;
+      user-select: all;
+    }
+    .copy-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      padding: 3px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.3); }
+    .copy-btn.copied {
+      background: var(--green);
+    }
+
     .status {
       font-size: 12px;
       display: flex;
@@ -93,17 +154,123 @@
     }
     .status-dot.connected { background: var(--green); }
 
-    .viewers-badge {
-      font-size: 11px;
-      background: rgba(255,255,255,0.25);
-      padding: 2px 10px;
-      border-radius: 10px;
-      font-weight: 500;
-      display: none;
+    /* ─── Main layout ─── */
+    .main-layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
     }
-    .viewers-badge.active { display: inline-block; }
+
+    /* ─── Session sidebar ─── */
+    .sidebar {
+      width: 280px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width 0.2s;
+    }
+    .sidebar.collapsed {
+      width: 0;
+      overflow: hidden;
+      border-right: none;
+    }
+    .sidebar-header {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-tertiary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .session-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .session-item:hover { background: rgba(0,0,0,0.04); }
+    .session-item.active { background: var(--accent-light); }
+    .session-item.hidden-session { opacity: 0.45; }
+
+    .session-item .session-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .session-item .session-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .session-item .session-label {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .session-item .session-status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .session-item .session-status-dot.connected { background: var(--green); }
+    .session-item .session-status-dot.disconnected { background: var(--text-tertiary); }
+    .session-item .session-status-dot.streaming { background: var(--green); animation: pulse-live 1s infinite; }
+
+    .session-item .session-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      padding-left: 24px;
+    }
+    .session-item .session-meta span {
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    /* Owner controls */
+    .session-item .visibility-toggle {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+      color: var(--text-secondary);
+    }
+    .session-item .visibility-toggle:hover {
+      background: rgba(0,0,0,0.05);
+    }
+    body.owner-mode .session-item .visibility-toggle {
+      display: block;
+    }
 
     /* ─── Chat area ─── */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
     .chat {
       flex: 1;
       overflow-y: auto;
@@ -138,8 +305,125 @@
     }
     .message.user {
       background: var(--bg-user);
-      border-radius: 0;
     }
+
+    /* ─── Thinking blocks ─── */
+    .message.thinking {
+      background: var(--bg-thinking);
+      border-left: 3px solid var(--accent-thinking);
+      padding: 8px 24px;
+      cursor: pointer;
+      position: relative;
+    }
+    .message.thinking .bubble {
+      font-style: italic;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    .message.thinking .collapsible-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-thinking);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .message.thinking .collapsible-preview {
+      display: none;
+      color: var(--text-tertiary);
+      font-size: 13px;
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 600px;
+    }
+    .message.thinking.collapsed .collapsible-preview { display: inline; }
+    body.hide-thinking .message.thinking { display: none; }
+
+    /* ─── Tool calls ─── */
+    .message.tool_call {
+      background: var(--bg-tool);
+      border-left: 3px solid var(--accent-tool);
+      padding: 8px 24px;
+      cursor: pointer;
+    }
+    .message.tool_call .collapsible-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-tool);
+    }
+    .message.tool_call .tool-name {
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(74, 127, 181, 0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .message.tool_call .bubble {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+
+    /* ─── Tool results ─── */
+    .message.tool_result {
+      background: var(--bg-tool);
+      border-left: 3px solid var(--accent-tool);
+      opacity: 0.85;
+      padding: 6px 24px;
+      cursor: pointer;
+    }
+    .message.tool_result .collapsible-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+    }
+    .message.tool_result .bubble {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text-tertiary);
+      margin-top: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    /* ─── System messages ─── */
+    .message.system {
+      background: var(--bg-system);
+      border-left: 3px solid var(--accent-system);
+      padding: 6px 24px;
+    }
+    .message.system .bubble {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ─── Collapsible shared ─── */
+    .collapsible-header .chevron {
+      transition: transform 0.2s;
+      font-size: 10px;
+    }
+    .collapsed .collapsible-header .chevron { transform: rotate(-90deg); }
+    .collapsed .bubble { max-height: 0; overflow: hidden; margin: 0; padding: 0; }
+
+    body.hide-tools .message.tool_call,
+    body.hide-tools .message.tool_result { display: none; }
 
     .avatar {
       width: 28px; height: 28px;
@@ -156,12 +440,11 @@
     .avatar.user { background: var(--avatar-user); }
     .avatar.assistant {
       background: var(--avatar-claude);
-      /* Claude sparkle icon via SVG */
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: center;
       background-size: 14px;
-      font-size: 0; /* hide text, show icon */
+      font-size: 0;
     }
 
     .bubble {
@@ -172,10 +455,9 @@
       min-width: 0;
     }
 
-    /* ─── Typography inside bubbles ─── */
+    /* ─── Typography ─── */
     .bubble p { margin-bottom: 10px; }
     .bubble p:last-child { margin-bottom: 0; }
-
     .bubble pre {
       background: var(--bg-code);
       color: #abb2bf;
@@ -213,107 +495,17 @@
     .bubble strong { font-weight: 600; }
     .bubble a { color: var(--accent); text-decoration: none; }
     .bubble a:hover { text-decoration: underline; }
-
-    .bubble table {
-      border-collapse: collapse;
-      margin: 12px 0;
-      width: 100%;
-      font-size: 14px;
-    }
-    .bubble th, .bubble td {
-      border: 1px solid var(--border);
-      padding: 8px 12px;
-      text-align: left;
-    }
-    .bubble th {
-      background: var(--bg-user);
-      font-weight: 600;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: var(--text-secondary);
-    }
+    .bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 14px; }
+    .bubble th, .bubble td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+    .bubble th { background: var(--bg-user); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); }
 
     /* ─── Artifacts ─── */
-    .bubble .artifact-block {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      margin: 14px 0;
-      overflow: hidden;
-      background: var(--bg-primary);
-    }
-    .bubble .artifact-header {
-      padding: 10px 16px;
-      font-weight: 600;
-      font-size: 14px;
-      background: linear-gradient(to right, var(--bg-user), var(--bg-primary));
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .bubble .artifact-type {
-      padding: 4px 16px 8px;
-      font-size: 12px;
-      color: var(--text-tertiary);
-    }
-    .bubble .artifact-content {
-      padding: 14px 16px;
-      font-size: 14px;
-      max-height: 500px;
-      overflow-y: auto;
-    }
-    .bubble .artifact-content pre {
-      margin: 0;
-    }
-
-    /* Claude.ai Tailwind class artifacts (rounded cards, borders) */
-    .bubble [class*="rounded-xl"][class*="border"] {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 16px;
-      margin: 12px 0;
-      background: var(--bg-primary);
-    }
-
-    /* Standard markdown container from claude.ai */
-    .bubble .standard-markdown {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    /* Copy button styling */
-    .bubble button {
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      font-family: inherit;
-    }
+    .bubble .artifact-block { border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; overflow: hidden; background: var(--bg-primary); }
+    .bubble .artifact-header { padding: 10px 16px; font-weight: 600; font-size: 14px; background: linear-gradient(to right, var(--bg-user), var(--bg-primary)); border-bottom: 1px solid var(--border); }
+    .bubble .artifact-content { padding: 14px 16px; font-size: 14px; max-height: 500px; overflow-y: auto; }
+    .bubble .standard-markdown { display: flex; flex-direction: column; gap: 12px; }
+    .bubble button { background: var(--accent); color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: inherit; }
     .bubble button:hover { opacity: 0.85; }
-
-    /* Code block header (language label) */
-    .bubble .code-block-header,
-    .bubble [class*="flex"][class*="justify-between"][class*="bg-"] {
-      background: #2d3139;
-      color: #9da5b4;
-      padding: 6px 14px;
-      font-size: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      border-radius: 8px 8px 0 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .bubble .code-block-header + pre,
-    .bubble [class*="flex"][class*="justify-between"][class*="bg-"] + pre {
-      border-radius: 0 0 8px 8px;
-      margin-top: 0;
-    }
 
     /* ─── Typing indicator ─── */
     .typing-indicator {
@@ -327,32 +519,20 @@
     }
     .typing-indicator.active { display: flex; align-items: center; gap: 10px; }
     .typing-dots span {
-      display: inline-block;
-      width: 5px; height: 5px;
-      background: var(--accent);
-      border-radius: 50%;
+      display: inline-block; width: 5px; height: 5px;
+      background: var(--accent); border-radius: 50%;
       animation: bounce 1.4s infinite;
     }
     .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
     .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes bounce {
-      0%, 80%, 100% { transform: translateY(0); }
-      40% { transform: translateY(-5px); }
-    }
+    @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-5px); } }
 
-    /* ─── Streaming cursor ─── */
     .streaming-cursor::after {
-      content: '▊';
-      animation: blink 1s step-end infinite;
-      color: var(--accent);
-      font-size: 14px;
+      content: '▊'; animation: blink 1s step-end infinite;
+      color: var(--accent); font-size: 14px;
     }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-    /* ─── Footer ─── */
     .footer {
       padding: 6px 20px;
       text-align: center;
@@ -363,21 +543,31 @@
       background: var(--bg-primary);
     }
 
-    /* ─── Scrollbar ─── */
     .chat::-webkit-scrollbar { width: 6px; }
     .chat::-webkit-scrollbar-track { background: transparent; }
     .chat::-webkit-scrollbar-thumb { background: var(--accent-light); border-radius: 3px; }
     .chat::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    .session-list::-webkit-scrollbar { width: 4px; }
+    .session-list::-webkit-scrollbar-thumb { background: var(--accent-light); border-radius: 2px; }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-left">
       <div class="live-dot"></div>
-      <h1>Live — Claude Conversation</h1>
+      <h1>Live Sharing</h1>
+    </div>
+    <div class="header-center">
+      <button class="toggle-btn" id="toggleSidebar" title="Toggle session panel">📋</button>
+      <button class="toggle-btn" id="toggleThinking" title="Toggle thinking blocks">💭</button>
+      <button class="toggle-btn" id="toggleTools" title="Toggle tool calls">🔧</button>
     </div>
     <div class="header-right">
-      <span class="viewers-badge" id="viewersBadge">0 viewers</span>
+      <div class="share-link" id="shareLink">
+        <span class="share-url" id="shareUrl"></span>
+        <button class="copy-btn" id="copyBtn" title="Copy share link">📋</button>
+      </div>
       <div class="status">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusText">Connecting...</span>
@@ -385,16 +575,32 @@
     </div>
   </div>
 
-  <div class="chat" id="chat">
-    <div class="empty-state" id="emptyState">
-      Waiting for conversation...
-      <small>Make sure the Chrome extension is active on claude.ai</small>
+  <div class="main-layout">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>Sessions</span>
+        <span id="sessionCount">0</span>
+      </div>
+      <div class="session-list" id="sessionList">
+        <div class="empty-state" style="height: auto; padding: 24px 0; font-size: 13px;">
+          No sessions yet
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div class="typing-indicator" id="typing">
-    <div class="typing-dots"><span></span><span></span><span></span></div>
-    Claude is thinking...
+    <div class="chat-container">
+      <div class="chat" id="chat">
+        <div class="empty-state" id="emptyState">
+          Waiting for conversation...
+          <small>Connect via Chrome extension (claude.ai) or JSONL watcher (Pi / Claude Code)</small>
+        </div>
+      </div>
+
+      <div class="typing-indicator" id="typing">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        Claude is thinking...
+      </div>
+    </div>
   </div>
 
   <div class="footer">
@@ -404,52 +610,182 @@
 <script>
 marked.setOptions({
   highlight: (code, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value;
-    }
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
     return hljs.highlightAuto(code).value;
   },
   breaks: true,
 });
 
+// ─── DOM refs ───
 const chat = document.getElementById("chat");
 const emptyState = document.getElementById("emptyState");
 const typingEl = document.getElementById("typing");
 const statusDot = document.getElementById("statusDot");
 const statusText = document.getElementById("statusText");
-const viewersBadge = document.getElementById("viewersBadge");
+const sessionListEl = document.getElementById("sessionList");
+const sessionCountEl = document.getElementById("sessionCount");
+const sidebarEl = document.getElementById("sidebar");
 
+// ─── State ───
 let messages = {};
 let streamingId = null;
 let autoScroll = true;
+let currentSessionId = null;
+let sessionData = []; // from server
+let isOwner = false;
+
+// Detect owner mode from URL
+const urlParams = new URLSearchParams(location.search);
+if (urlParams.get("owner") === "true") {
+  isOwner = true;
+  document.body.classList.add("owner-mode");
+}
 
 chat.addEventListener("scroll", () => {
   const { scrollTop, scrollHeight, clientHeight } = chat;
   autoScroll = scrollHeight - scrollTop - clientHeight < 80;
 });
 
-function scrollToBottom() {
-  if (autoScroll) {
-    chat.scrollTop = chat.scrollHeight;
-  }
+function scrollToBottom() { if (autoScroll) chat.scrollTop = chat.scrollHeight; }
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function renderMarkdown(text) {
   if (!text) return "";
-  if (text.includes("<p>") || text.includes("<code>") || text.includes("<div>") || text.includes("<ol>") || text.includes("<ul>")) {
-    return text;
+  if (text.includes("<p>") || text.includes("<code>") || text.includes("<div>") || text.includes("<ol>") || text.includes("<ul>")) return text;
+  try { return marked.parse(text); } catch { return text; }
+}
+
+// ─── Session list rendering ───
+
+function renderSessionList() {
+  sessionCountEl.textContent = sessionData.length;
+
+  if (sessionData.length === 0) {
+    sessionListEl.innerHTML = '<div class="empty-state" style="height:auto;padding:24px 0;font-size:13px;">No sessions yet</div>';
+    return;
   }
-  try {
-    return marked.parse(text);
-  } catch {
-    return text;
+
+  sessionListEl.innerHTML = "";
+  for (const s of sessionData) {
+    const div = document.createElement("div");
+    div.className = "session-item" + (s.id === currentSessionId ? " active" : "") + (!s.visible ? " hidden-session" : "");
+    div.dataset.sessionId = s.id;
+
+    const icon = s.sourceType === "pi" ? "🥧" : s.sourceType === "claude-code" ? "🔷" : s.sourceType === "claude-ai" ? "🌐" : "📄";
+    const statusClass = s.streaming ? "streaming" : s.connected ? "connected" : "disconnected";
+
+    div.innerHTML = `
+      <div class="session-top">
+        <span class="session-icon">${icon}</span>
+        <span class="session-label">${escapeHtml(s.label)}</span>
+        <span class="session-status-dot ${statusClass}"></span>
+      </div>
+      <div class="session-meta">
+        <span>${s.messageCount} msgs</span>
+        ${s.streaming ? '<span style="color:var(--green)">● streaming</span>' : ''}
+      </div>
+      ${isOwner ? `<button class="visibility-toggle" data-sid="${s.id}" title="${s.visible ? 'Hide from viewers' : 'Show to viewers'}">${s.visible ? '👁️' : '🚫'}</button>` : ''}
+    `;
+
+    // Click to switch session
+    div.addEventListener("click", (e) => {
+      if (e.target.classList.contains("visibility-toggle")) return;
+      switchSession(s.id);
+    });
+
+    sessionListEl.appendChild(div);
+  }
+
+  // Owner visibility toggles
+  if (isOwner) {
+    for (const btn of sessionListEl.querySelectorAll(".visibility-toggle")) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const sid = btn.dataset.sid;
+        const session = sessionData.find(s => s.id === sid);
+        if (session && ws) {
+          ws.send(JSON.stringify({ type: "set_visibility", sessionId: sid, visible: !session.visible }));
+        }
+      });
+    }
   }
 }
 
-function createMessageEl(id, role, text) {
+function switchSession(sessionId) {
+  if (sessionId === currentSessionId) return;
+  currentSessionId = sessionId;
+  if (ws) {
+    ws.send(JSON.stringify({ type: "switch_session", sessionId }));
+  }
+  // Highlight in sidebar
+  for (const item of sessionListEl.querySelectorAll(".session-item")) {
+    item.classList.toggle("active", item.dataset.sessionId === sessionId);
+  }
+}
+
+// ─── Message rendering ───
+
+function createMessageEl(id, role, text, extra) {
+  extra = extra || {};
   const div = document.createElement("div");
   div.className = `message ${role}`;
   div.id = `msg-${id}`;
+
+  if (role === "thinking") {
+    const preview = (text || "").slice(0, 120).replace(/\n/g, " ");
+    div.classList.add("collapsed");
+    div.innerHTML = `
+      <div class="collapsible-header">
+        <span class="chevron">▼</span>
+        💭 Thinking
+        <span class="collapsible-preview">${escapeHtml(preview)}…</span>
+      </div>
+      <div class="bubble">${renderMarkdown(text)}</div>
+    `;
+    div.addEventListener("click", () => div.classList.toggle("collapsed"));
+    return div;
+  }
+
+  if (role === "tool_call") {
+    const toolName = extra.toolName || "tool";
+    div.classList.add("collapsed");
+    div.innerHTML = `
+      <div class="collapsible-header">
+        <span class="chevron">▼</span>
+        🔧 <span class="tool-name">${escapeHtml(toolName)}</span>
+      </div>
+      <div class="bubble">${escapeHtml(text)}</div>
+    `;
+    div.addEventListener("click", () => div.classList.toggle("collapsed"));
+    return div;
+  }
+
+  if (role === "tool_result") {
+    const toolName = extra.toolName || "result";
+    div.classList.add("collapsed");
+    div.innerHTML = `
+      <div class="collapsible-header">
+        <span class="chevron">▼</span>
+        📋 Result${toolName ? ` (${escapeHtml(toolName)})` : ""}
+      </div>
+      <div class="bubble">${escapeHtml(text)}</div>
+    `;
+    div.addEventListener("click", () => div.classList.toggle("collapsed"));
+    return div;
+  }
+
+  if (role === "system") {
+    div.innerHTML = `
+      <div class="avatar system" style="background:var(--accent-system);">⚙</div>
+      <div class="bubble">${renderMarkdown(text)}</div>
+    `;
+    return div;
+  }
+
   const avatarContent = role === "user" ? "U" : "";
   div.innerHTML = `
     <div class="avatar ${role}">${avatarContent}</div>
@@ -462,8 +798,19 @@ function updateMessageEl(id, text, streaming) {
   const entry = messages[id];
   if (!entry) return;
   const bubble = entry.el.querySelector(".bubble");
-  bubble.innerHTML = renderMarkdown(text);
-  if (streaming) {
+  const role = entry.role;
+
+  if (role === "thinking") {
+    bubble.innerHTML = renderMarkdown(text);
+    const preview = entry.el.querySelector(".collapsible-preview");
+    if (preview) preview.textContent = (text || "").slice(0, 120).replace(/\n/g, " ") + "…";
+  } else if (role === "tool_call" || role === "tool_result") {
+    bubble.textContent = text;
+  } else {
+    bubble.innerHTML = renderMarkdown(text);
+  }
+
+  if (streaming && (role === "assistant" || role === "user")) {
     bubble.classList.add("streaming-cursor");
   } else {
     bubble.classList.remove("streaming-cursor");
@@ -482,9 +829,10 @@ function setMessages(list, currentStreamingId) {
   emptyState.remove();
 
   for (const msg of list) {
-    const el = createMessageEl(msg.id, msg.role, msg.text);
+    const extra = { toolName: msg.toolName, toolCallId: msg.toolCallId };
+    const el = createMessageEl(msg.id, msg.role, msg.text, extra);
     chat.appendChild(el);
-    messages[msg.id] = { role: msg.role, text: msg.text, el };
+    messages[msg.id] = { role: msg.role, text: msg.text, el, toolName: msg.toolName, toolCallId: msg.toolCallId };
   }
 
   if (streamingId && messages[streamingId]) {
@@ -495,42 +843,31 @@ function setMessages(list, currentStreamingId) {
   scrollToBottom();
 }
 
-// --- Electron status updates ---
+// ─── Electron ───
 if (window.liveShare) {
-  window.liveShare.onStatusUpdate((status) => {
-    if (status.viewers > 0) {
-      viewersBadge.textContent = `${status.viewers} viewer${status.viewers !== 1 ? "s" : ""}`;
-      viewersBadge.classList.add("active");
-    } else {
-      viewersBadge.classList.remove("active");
-    }
-  });
+  window.liveShare.onStatusUpdate((status) => {});
 }
 
-// --- WebSocket ---
+// ─── WebSocket ───
 let ws;
 let reconnectDelay = 1000;
-let _cachedToken = null;
 
 async function getWsUrl() {
   let token = null;
   if (window.liveShare && window.liveShare.getToken) {
-    try {
-      token = await window.liveShare.getToken();
-    } catch {}
+    try { token = await window.liveShare.getToken(); } catch {}
   }
-  if (!token) {
-    const params = new URLSearchParams(location.search);
-    token = params.get("token");
-  }
-  _cachedToken = token;
-  const tokenQuery = token ? `?token=${token}` : "";
+  if (!token) token = urlParams.get("token");
+  const tokenQuery = token ? `&token=${token}` : "";
+  const ownerQuery = isOwner ? "owner=true" : "";
+  const query = [ownerQuery, token ? `token=${token}` : ""].filter(Boolean).join("&");
+  const queryStr = query ? `?${query}` : "";
 
   if (location.protocol === "file:") {
-    return `ws://localhost:3333/ws/viewer${tokenQuery}`;
+    return `ws://localhost:3333/ws/viewer${queryStr}`;
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws/viewer${tokenQuery}`;
+  return `${proto}//${location.host}/ws/viewer${queryStr}`;
 }
 
 async function connect() {
@@ -546,7 +883,7 @@ async function connect() {
   };
 
   ws.onclose = (event) => {
-    console.log(`[Viewer] WS disconnected — code=${event.code} reason="${event.reason || ""}"`);
+    console.log(`[Viewer] WS disconnected — code=${event.code}`);
     statusDot.classList.remove("connected");
     statusText.textContent = "Reconnecting...";
     setTimeout(connect, reconnectDelay);
@@ -557,24 +894,44 @@ async function connect() {
 
   ws.onmessage = (event) => {
     let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    console.log(`[Viewer] ← ${msg.type}${msg.messages ? ` (${msg.messages.length} msgs)` : ""}${msg.id ? ` id=${msg.id}` : ""}`);
+    try { msg = JSON.parse(event.data); } catch { return; }
 
     switch (msg.type) {
-      case "full_sync":
-        setMessages(msg.messages, msg.streamingId);
+      case "server_info": {
+        if (msg.shareUrl) updateShareUrl(msg.shareUrl);
         break;
+      }
+      case "session_list": {
+        sessionData = msg.sessions || [];
+        if (msg.isOwner !== undefined) {
+          isOwner = msg.isOwner;
+          document.body.classList.toggle("owner-mode", isOwner);
+        }
+        renderSessionList();
+
+        // Auto-select first if none selected
+        if (!currentSessionId && sessionData.length > 0) {
+          currentSessionId = sessionData[0].id;
+          renderSessionList();
+        }
+        break;
+      }
+
+      case "full_sync": {
+        if (msg.sessionId) currentSessionId = msg.sessionId;
+        setMessages(msg.messages, msg.streamingId);
+        renderSessionList(); // update active highlight
+        break;
+      }
 
       case "message_start": {
+        // Only process if it's for the session we're watching
+        if (msg.sessionId && msg.sessionId !== currentSessionId) break;
         emptyState.remove();
-        const el = createMessageEl(msg.id, msg.role, "");
+        const extra = { toolName: msg.toolName, toolCallId: msg.toolCallId };
+        const el = createMessageEl(msg.id, msg.role, "", extra);
         chat.appendChild(el);
-        messages[msg.id] = { role: msg.role, text: "", el };
+        messages[msg.id] = { role: msg.role, text: "", el, toolName: msg.toolName, toolCallId: msg.toolCallId };
         if (msg.role === "assistant") {
           streamingId = msg.id;
           typingEl.classList.add("active");
@@ -584,6 +941,7 @@ async function connect() {
       }
 
       case "delta": {
+        if (msg.sessionId && msg.sessionId !== currentSessionId) break;
         const entry = messages[msg.id];
         if (entry) {
           entry.text += msg.text;
@@ -596,6 +954,7 @@ async function connect() {
       }
 
       case "delta_replace": {
+        if (msg.sessionId && msg.sessionId !== currentSessionId) break;
         const entry = messages[msg.id];
         if (entry) {
           entry.text = msg.text;
@@ -608,10 +967,9 @@ async function connect() {
       }
 
       case "message_end": {
+        if (msg.sessionId && msg.sessionId !== currentSessionId) break;
         const entry = messages[msg.id];
-        if (entry) {
-          updateMessageEl(msg.id, entry.text, false);
-        }
+        if (entry) updateMessageEl(msg.id, entry.text, false);
         streamingId = null;
         typingEl.classList.remove("active");
         scrollToBottom();
@@ -620,6 +978,57 @@ async function connect() {
     }
   };
 }
+
+// ─── Share link ───
+const shareLinkEl = document.getElementById("shareLink");
+const shareUrlEl = document.getElementById("shareUrl");
+const copyBtnEl = document.getElementById("copyBtn");
+
+function updateShareUrl(url) {
+  shareUrlEl.textContent = url || "…";
+  shareUrlEl.title = url || "";
+}
+// Will be populated by server_info message
+
+copyBtnEl.addEventListener("click", () => {
+  const url = shareUrlEl.textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    copyBtnEl.textContent = "✅";
+    copyBtnEl.classList.add("copied");
+    setTimeout(() => {
+      copyBtnEl.textContent = "📋";
+      copyBtnEl.classList.remove("copied");
+    }, 2000);
+  }).catch(() => {
+    // Fallback for non-HTTPS
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    copyBtnEl.textContent = "✅";
+    copyBtnEl.classList.add("copied");
+    setTimeout(() => {
+      copyBtnEl.textContent = "📋";
+      copyBtnEl.classList.remove("copied");
+    }, 2000);
+  });
+});
+
+// ─── Toggle buttons ───
+document.getElementById("toggleThinking").addEventListener("click", function() {
+  document.body.classList.toggle("hide-thinking");
+  this.classList.toggle("inactive");
+});
+document.getElementById("toggleTools").addEventListener("click", function() {
+  document.body.classList.toggle("hide-tools");
+  this.classList.toggle("inactive");
+});
+document.getElementById("toggleSidebar").addEventListener("click", function() {
+  sidebarEl.classList.toggle("collapsed");
+  this.classList.toggle("inactive");
+});
 
 connect();
 </script>

@@ -1,146 +1,154 @@
 # 🔴 Live Claude Sharing
 
-Share your Claude.ai conversation in real-time with anyone via a web link.
+**Share your Claude.ai conversation in real-time with anyone via a web link.**
+
+Watch Claude think and type — live — from any browser, anywhere.
+
+![Live Claude Sharing screenshot](assets/screenshot.png)
+
+---
+
+## ✨ Features
+
+- 🔴 **Real-time streaming** — see text appear as Claude types
+- 🔗 **One-click sharing** — right-click tray → "Share online" → link copied
+- 🌍 **Cloudflare Tunnel** — built-in, no manual setup needed
+- 🔐 **Token auth** — viewers need the link, sources connect locally
+- 📎 **Artifact support** — code blocks, iframes, interactive content captured
+- 💾 **Persistence** — conversation survives server restart
+- 🔄 **Auto-reconnect** — on disconnect, for both source and viewer
+- 🎨 **Claude-style UI** — warm sand theme matching claude.ai aesthetic
+- 📦 **Desktop app** — Electron with system tray (Windows & macOS)
 
 ## How it works
 
 ```
-Your Chrome (claude.ai)  →  Extension  →  WebSocket Server  →  Viewer page (colleague)
-                         DOM observer      localhost:3333       via ngrok tunnel
+claude.ai (Chrome)  →  Extension  →  WS Server  →  Viewers (anyone with the link)
+   DOM observer          content       :3333         via Cloudflare Tunnel
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Start the server
+### Option A — Desktop App (recommended)
+
+1. Download from [Releases](https://github.com/theflysurfer/live-claude-sharing/releases)
+2. Install the Chrome extension (see below)
+3. Open claude.ai → start chatting
+4. Right-click tray icon → **"🌍 Share online"**
+5. Link is copied to clipboard — send it to anyone!
+
+### Option B — From source
 
 ```bash
-cd server
+git clone https://github.com/theflysurfer/live-claude-sharing.git
+cd live-claude-sharing
 npm install
-npm start
+npm run dev
 ```
 
-Server runs on `http://localhost:3333`.
+### Install the Chrome Extension
 
-### 2. Install the Chrome extension
-
-1. Open `chrome://extensions/` in Chrome
+1. Open `chrome://extensions/`
 2. Enable **Developer mode** (top right)
-3. Click **Load unpacked**
-4. Select the `extension/` folder
+3. **Load unpacked** → select the `extension/` folder
+4. Go to `claude.ai` — the extension auto-connects
 
-### 3. Open a Claude conversation
+## 🌍 Sharing
 
-Go to `https://claude.ai` and open any conversation. The extension auto-connects to the server and starts streaming.
+### One-click (Electron app)
 
-### 4. Share with your colleague
+Right-click the tray icon → **"🌍 Share online"**:
+- Cloudflare Tunnel starts automatically
+- Public URL with auth token is copied to clipboard
+- Windows notification confirms the link
+- **"🛑 Stop sharing"** to close the tunnel
 
-**Local network:**
-```
-http://localhost:3333
-```
+### Manual
 
-**Internet (via ngrok):**
 ```bash
+# Option 1: Cloudflare Tunnel (free, no account needed)
+cloudflared tunnel --url http://localhost:3333
+
+# Option 2: ngrok
 ngrok http 3333
 ```
-Share the ngrok URL with your colleague.
 
-## Architecture
+Add `?token=YOUR_TOKEN` to the URL (check server logs for the token).
 
-- **Extension** (`extension/`) — Chrome Manifest V3 extension with MutationObserver on claude.ai DOM
-- **Server** (`server/`) — Node.js HTTP + WebSocket relay (single dependency: `ws`)
-- **Viewer** (`viewer/index.html`) — Standalone HTML page with live WebSocket updates, markdown rendering, code highlighting
-- **Electron** (`main.js`, `tray.js`, `preload.js`) — Desktop app wrapper with system tray
+## 🏗️ Architecture
 
-## Features
+| Component | Path | Description |
+|-----------|------|-------------|
+| **Extension** | `extension/` | Chrome MV3, MutationObserver on claude.ai DOM |
+| **Server** | `server/` | Node.js HTTP + WebSocket relay (dep: `ws`) |
+| **Viewer** | `viewer/` | Standalone HTML, markdown + syntax highlighting |
+| **Electron** | `main.js` | Desktop wrapper with tray, tunnel, IPC |
 
-- ✅ Real-time streaming (sees text appear as Claude types)
-- ✅ Full conversation sync on connect (join mid-conversation)
-- ✅ Auto-reconnect on disconnect
-- ✅ Markdown + code syntax highlighting
-- ✅ SPA navigation detection (switching conversations)
-- ✅ Responsive design
-- ✅ Token authentication for viewer access
-- ✅ Optional conversation persistence (survives server restart)
-- ✅ Conditional debug logging
-- ✅ Electron desktop app with system tray
-
-## Server Options
-
-The `LiveShareServer` constructor accepts:
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `port` | number | `3333` | HTTP + WebSocket port |
-| `viewerDir` | string | `../viewer` | Path to the viewer HTML directory |
-| `token` | string/boolean | `null` | `true` = auto-generate, string = use as token, `null` = no auth |
-| `persist` | boolean | `false` | Save conversation to JSON on each sync/message_end |
-| `persistPath` | string | `server/conversation-backup.json` | Backup file path |
-| `debug` | boolean | `false` | Enable verbose logging (also via `LIVESHARE_DEBUG=1`) |
-
-### Token Authentication
-
-When token auth is enabled, viewers must include `?token=<token>` in the URL. Sources (the Chrome extension) connect without a token.
-
-```bash
-# Auto-generate token
-node -e "const {LiveShareServer}=require('./server/ws-server'); const s=new LiveShareServer({token:true}); s.start().then(()=>console.log('Token:', s.token))"
-```
-
-### Persistence
-
-With `persist: true`, the conversation is saved to disk on every `full_sync` and `message_end`. On restart, the server loads the backup automatically.
-
-## Extension Details
-
-The content script (`extension/content-v2.js`) uses centralized DOM selectors:
+## ⚙️ Server Options
 
 ```js
-const SELECTORS = {
-  userMessage: "[data-testid='user-message']",
-  claudeResponse: "[class*='font-claude-response']",
-  scroller: "[class*='scrollbar-gutter'], ...",
-  contents: ".contents",
-};
+new LiveShareServer({
+  port: 3333,           // HTTP + WebSocket port
+  token: true,          // true = auto-generate, string = custom, null = no auth
+  persist: true,        // Save conversation to JSON (survives restart)
+  persistPath: "...",   // Backup file path
+  viewerDir: "../viewer"
+});
 ```
 
-If selectors break after a claude.ai redesign, update `SELECTORS` in `content-v2.js`. The extension reports `selector_broken` debug events after 30s with no messages detected.
-
-## Testing
-
-Three test levels, no manual interaction needed for levels 1-2:
+## 🧪 Testing
 
 ```bash
 # Level 1 — Server relay (29 tests, pure Node.js)
 node test-server.js
 
-# Level 2 — Extension on mock DOM (10 tests, requires patchright)
+# Level 2 — Extension on mock DOM (10 tests, Patchright)
 python test-extension.py
 
-# Level 3 — E2E on real claude.ai (requires authenticated session)
+# Level 3 — E2E on real claude.ai (needs auth session)
 python test-auto.py
 ```
 
-## Electron App
+## 📡 Protocol
 
-```bash
-# Development
-npm run dev
+| Type | Payload | Description |
+|------|---------|-------------|
+| `full_sync` | `{ messages: [{id, role, text}], version }` | Full conversation state |
+| `message_start` | `{ id, role }` | New message begins |
+| `delta` | `{ id, text }` | Text appended (streaming) |
+| `delta_replace` | `{ id, text }` | Full text replacement |
+| `message_end` | `{ id }` | Message complete |
 
-# Build
-npm run build:win   # Windows
-npm run build:mac   # macOS
+## 🔧 Extension Selectors
+
+The content script uses centralized DOM selectors for claude.ai (March 2026):
+
+```js
+const SELECTORS = {
+  userMessage: "[data-testid='user-message']",
+  claudeResponse: "[class*='font-claude-response']",
+  artifactCard: "[data-testid='artifact-card']",
+  artifactIframe: "iframe[sandbox]",
+};
 ```
 
-## Protocol
+If claude.ai redesigns, update `SELECTORS` in `extension/content-v2.js`. The extension auto-reports `selector_broken` after 30s with no messages found.
 
-Messages between extension → server → viewer:
+## 📦 Building
 
-| Type | Direction | Payload |
-|------|-----------|---------|
-| `full_sync` | source → server → viewers | `{ messages: [{id, role, text}], version }` |
-| `message_start` | source → server → viewers | `{ id, role }` |
-| `delta` | source → server → viewers | `{ id, text }` (appended) |
-| `delta_replace` | source → server → viewers | `{ id, text }` (full replace) |
-| `message_end` | source → server → viewers | `{ id }` |
-| `__debug` | source → server (logged) | `{ key, val }` |
+```bash
+npm run build:win   # Windows .exe
+npm run build:mac   # macOS .dmg (needs macOS)
+npm run build       # Both
+```
+
+Or let GitHub Actions build on tag push:
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+# → .exe + .dmg in GitHub Releases
+```
+
+## License
+
+MIT

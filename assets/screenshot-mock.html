@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Claude Conversation</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #f9f6f1;
+      --bg-chat: #ffffff;
+      --bg-user: #f3ebe2;
+      --bg-assistant: transparent;
+      --bg-code: #282c34;
+      --bg-inline-code: #f0ebe4;
+      --bg-header: #d4a574;
+      --text-primary: #2d2013;
+      --text-secondary: #6b5d4d;
+      --text-tertiary: #9b8b78;
+      --border: #e8dfd4;
+      --accent: #c4814a;
+      --accent-light: #e8c9a8;
+      --green: #4a9e6e;
+      --red: #c75a3a;
+      --avatar-claude: #c4814a;
+      --avatar-user: #7c6b5a;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      background: var(--bg-header);
+      color: white;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-left .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #fff;
+      animation: pulse-live 2s ease-in-out infinite;
+    }
+    @keyframes pulse-live {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,255,255,0.6); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(255,255,255,0); }
+    }
+    .header h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+    .header-right { display: flex; align-items: center; gap: 14px; }
+    .status { font-size: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .viewers-badge {
+      font-size: 11px; background: rgba(255,255,255,0.25);
+      padding: 2px 10px; border-radius: 10px; font-weight: 500;
+    }
+    .chat {
+      flex: 1; overflow-y: auto; padding: 24px 0;
+      background: var(--bg-chat);
+    }
+    .message {
+      max-width: 720px; margin: 0 auto;
+      padding: 16px 24px; display: flex; gap: 16px;
+    }
+    .message.user { background: var(--bg-user); }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      flex-shrink: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 12px; font-weight: 600;
+      color: white; margin-top: 2px;
+    }
+    .avatar.user { background: var(--avatar-user); }
+    .avatar.assistant { background: var(--avatar-claude); font-size: 16px; }
+    .bubble {
+      flex: 1; line-height: 1.65; font-size: 15px;
+      overflow-wrap: break-word;
+    }
+    .bubble p { margin-bottom: 10px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble pre {
+      background: var(--bg-code); color: #abb2bf;
+      padding: 14px 16px; border-radius: 8px;
+      overflow-x: auto; margin: 12px 0; font-size: 13px;
+      line-height: 1.5; border: 1px solid #3a3f4b;
+    }
+    .bubble code {
+      font-family: 'JetBrains Mono', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    .bubble :not(pre) > code {
+      background: var(--bg-inline-code); padding: 2px 6px;
+      border-radius: 4px; color: var(--accent);
+    }
+    .bubble strong { font-weight: 600; }
+    .bubble ul { padding-left: 24px; margin: 10px 0; }
+    .bubble li { margin-bottom: 4px; }
+    .streaming-cursor::after {
+      content: '▊'; animation: blink 1s step-end infinite;
+      color: var(--accent); font-size: 14px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .typing-indicator {
+      max-width: 720px; margin: 0 auto;
+      padding: 8px 24px 8px 68px; color: var(--accent);
+      font-size: 13px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .typing-dots span {
+      display: inline-block; width: 5px; height: 5px;
+      background: var(--accent); border-radius: 50%;
+      animation: bounce 1.4s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-5px); }
+    }
+    .footer {
+      padding: 6px 20px; text-align: center; font-size: 11px;
+      color: var(--text-tertiary); border-top: 1px solid var(--border);
+      background: var(--bg-primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <div class="live-dot"></div>
+      <h1>Live — Claude Conversation</h1>
+    </div>
+    <div class="header-right">
+      <span class="viewers-badge">3 viewers</span>
+      <div class="status">
+        <div class="status-dot"></div>
+        <span>Connected</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat">
+    <div class="message user">
+      <div class="avatar user">U</div>
+      <div class="bubble">
+        <p>Can you write a Python function that calculates the Fibonacci sequence using memoization?</p>
+      </div>
+    </div>
+
+    <div class="message assistant">
+      <div class="avatar assistant">✦</div>
+      <div class="bubble">
+        <p>Here's a clean implementation using a decorator for memoization:</p>
+        <pre><code><span style="color:#c678dd">from</span> <span style="color:#e5c07b">functools</span> <span style="color:#c678dd">import</span> lru_cache
+
+<span style="color:#61afef">@lru_cache</span>(maxsize=<span style="color:#d19a66">None</span>)
+<span style="color:#c678dd">def</span> <span style="color:#61afef">fibonacci</span>(n: <span style="color:#e5c07b">int</span>) -> <span style="color:#e5c07b">int</span>:
+    <span style="color:#98c379">"""Return the nth Fibonacci number."""</span>
+    <span style="color:#c678dd">if</span> n <= <span style="color:#d19a66">1</span>:
+        <span style="color:#c678dd">return</span> n
+    <span style="color:#c678dd">return</span> fibonacci(n - <span style="color:#d19a66">1</span>) + fibonacci(n - <span style="color:#d19a66">2</span>)
+
+<span style="color:#5c6370"># Example usage</span>
+<span style="color:#c678dd">for</span> i <span style="color:#c678dd">in</span> <span style="color:#61afef">range</span>(<span style="color:#d19a66">10</span>):
+    <span style="color:#61afef">print</span>(<span style="color:#c678dd">f</span><span style="color:#98c379">"F({i}) = {fibonacci(i)}"</span>)</code></pre>
+        <p>Key points:</p>
+        <ul>
+          <li><code>@lru_cache</code> automatically memoizes results — no manual dictionary needed</li>
+          <li>Time complexity drops from <strong>O(2ⁿ)</strong> to <strong>O(n)</strong></li>
+          <li><code>maxsize=None</code> means unlimited cache (use a number to limit memory)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="message user">
+      <div class="avatar user">U</div>
+      <div class="bubble">
+        <p>Great! Now make it a generator that yields each number</p>
+      </div>
+    </div>
+
+    <div class="message assistant">
+      <div class="avatar assistant">✦</div>
+      <div class="bubble streaming-cursor">
+        <p>Here's the generator version — it yields Fibonacci numbers one at a time, which is memory-efficient for large sequences:</p>
+        <pre><code><span style="color:#c678dd">def</span> <span style="color:#61afef">fib_generator</span>():
+    <span style="color:#98c379">"""Yield Fibonacci numbers infinitely."""</span>
+    a, b = <span style="color:#d19a66">0</span>, <span style="color:#d19a66">1</span>
+    <span style="color:#c678dd">while</span> <span style="color:#d19a66">True</span>:
+        <span style="color:#c678dd">yield</span> a
+        a, b = b, a + b</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="typing-indicator">
+    <div class="typing-dots"><span></span><span></span><span></span></div>
+    Claude is thinking...
+  </div>
+
+  <div class="footer">
+    Live Claude Sharing — Read-only viewer
+  </div>
+</body>
+</html>
